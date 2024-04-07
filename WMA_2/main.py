@@ -18,7 +18,6 @@ class ProcessingType(Enum):
     VALUE = 4
     MASK = 5
 
-
 # Model
 class ColorTracker:
     def __init__(self, video_path: str, tracked_color: None or tuple[int, int, int]) -> None:
@@ -29,6 +28,8 @@ class ColorTracker:
         self._frame: None or np.ndarray = None
         self._processed_frame: None or np.ndarray = None
         self._processing_type: ProcessingType = ProcessingType.RAW
+        self.erode: int = 0
+        self.dilate: int = 0
 
     def set_processing_type(self, ptype: ProcessingType) -> None:
         self._processing_type = ptype
@@ -64,6 +65,8 @@ class ColorTracker:
             raise ValueError(f'Attempted processing mode that requires a tracking color set without it set.')
         mask = np.zeros_like(hue)
         mask[hue == self._tracked_color[0]] = 255
+        mask[saturation == self._tracked_color[1]] = 255
+        mask[value == self._tracked_color[2]] = 255
         if self._processing_type == ProcessingType.MASK:
             self._processed_frame = mask
 
@@ -80,7 +83,7 @@ class ColorTracker:
         drawing = np.zeros_like(mask, dtype=np.uint8)
 
         for i in range(len(contours)):
-            color = (rng.randint(0, 256), rng.randint(0,256), rng.randint(0, 256))
+            color = (rng.randint(0, 256), rng.randint(0, 256), rng.randint(0, 256))
             cv2.rectangle(drawing, (int(boundRect[i][0]), int(boundRect[i][1])),
                           (int(boundRect[i][0] + boundRect[i][2]),
                            int(boundRect[i][1] + boundRect[i][3])), color, 2)
@@ -93,7 +96,15 @@ class ColorTracker:
         return self._frame.copy()
 
     def get_processed_frame(self) -> np.ndarray:
-        return self._processed_frame.copy()
+        processed_frame_copy = self._processed_frame.copy()
+        kernel = np.ones((2, 2), np.uint8)
+        if self.erode != 0:
+            processed_frame_copy = cv2.erode(self._processed_frame.copy(), kernel, iterations=self.erode)
+        if self.dilate != 0:
+            processed_frame_copy = cv2.dilate(self._processed_frame.copy(), kernel, iterations=self.dilate)
+        if self._processing_type == ProcessingType.RAW:
+            return self._processed_frame.copy()
+        return processed_frame_copy
 
 
 # View
@@ -137,6 +148,12 @@ class EventHandler:
             return False
         elif keycode in EventHandler.PROCESSING_TYPE_KEYMAP.keys():
             self._tracker.set_processing_type(EventHandler.PROCESSING_TYPE_KEYMAP[keycode])
+        elif keycode == ord('e'):
+            self._tracker.erode += 1
+            print(f'Current erode: {self._tracker.erode}')
+        elif keycode == ord('d'):
+            self._tracker.dilate += 1
+            print(f'Current dilation: {self._tracker.dilate}')
         return True
 
     def handle_events(self) -> bool:
